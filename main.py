@@ -1,67 +1,56 @@
+import os
 import pandas as pd
 
-arquivoEntrada = "planilha.xlsx"
-arquivoSaida = "arquivoOrganizado.xlsx"
-
-
 def formatar_data(data):
-    # formata a data para dd/mm/yyyy
     if isinstance(data, pd.Timestamp):  # Verificar se é um objeto datetime
         return data.strftime('%d/%m/%Y')
     else:
         return ''
 
-
 def formatar_valor(valor):
-    # formata o valor para R$xx.xx
-    return f'R$ {valor:.2f}'
+    if pd.isnull(valor):  # Verificar se o valor é NaN
+        return ''  # Se for NaN, retornar uma string vazia
+    else:
+        return f'{valor:.2f} '
 
-
-def carregar_dados(arquivo):
-    # carrega os dados do arquivo Excel
+def processar_planilha(file_path):
     try:
-        tabela = pd.read_excel(arquivo)
-    except FileNotFoundError:
-        print(f'O arquivo {arquivo} não foi encontrado.')
-        return None
+        # Carregar os dados do arquivo Excel
+        tabela = pd.read_excel(file_path)
 
-    return tabela
+        # Converter a coluna 'dt_servico' para o tipo datetime
+        tabela['dt_servico'] = pd.to_datetime(tabela['dt_servico'], errors='coerce')
 
+        # Converter a coluna 'valor' para float
+        tabela['valor'] = pd.to_numeric(tabela['valor'], errors='coerce')
 
-def processar_dados(tabela):
-    # processa os dados da tabela
-    tabela['dt_servico'] = pd.to_datetime(tabela['dt_servico'], errors='coerce')
-    tabela = tabela.dropna(subset=['dt_servico'])
-    tabela['valor'] = pd.to_numeric(tabela['valor'], errors='coerce')
-    tabela['dt_servico'] = tabela['dt_servico'].apply(formatar_data)
-    tabela['valor'] = tabela['valor'].apply(formatar_valor)
+        # Formatar a data
+        tabela['dt_servico'] = tabela['dt_servico'].apply(formatar_data)
 
-    return tabela
+        # Formatar o valor em reais (R$) e armazenar em uma nova coluna
+        tabela['valor_formatado'] = tabela['valor'].apply(formatar_valor)
 
+        # Agrupar os dados da tabela ignorando a data e mantendo a primeira data de cada grupo
+        tabelaAgrupado = tabela.groupby(['placa_ou_id_veiculo',
+                                         'servico 1-Manutencao Corretiva 2-Manutecao Preventiva 3-Sinistro 4-Ordem Servico 5-AVARIAS RECUPERACAO/DEVOLUCAO 6-TROCA PNEUS 7-TAXA ADMINISTRATIVA',
+                                         'numero_ordem_servico']).agg({'valor': 'sum', 'descricao': ' / '.join, 'dt_servico': 'first'}).reset_index()
 
-def agrupar_dados(tabela):
-    # agrupa os dados da tabela
-    tabelaAgrupado = tabela.groupby(['placa_ou_id_veiculo',
-                                     'servico 1-Manutencao Corretiva 2-Manutecao Preventiva 3-Sinistro 4-Ordem Servico 5-AVARIAS RECUPERACAO/DEVOLUCAO 6-TROCA PNEUS 7-TAXA ADMINISTRATIVA',
-                                     'numero_ordem_servico',
-                                     'dt_servico']).agg({'valor': 'sum', 'descricao': ' / '.join}).reset_index()
-
-    return tabelaAgrupado
-
-
-def salvar_dados(tabela, arquivo):
-    # salva os dados processados em um novo arquivo Excel
-    tabela.to_excel(arquivo, index=False)
+        # Salvar os resultados em um novo arquivo Excel
+        new_file_path = os.path.splitext(file_path)[0] + '_formatado.xlsx'
+        tabelaAgrupado.to_excel(new_file_path, index=False)
+        print(f"Planilha {file_path} processada e salva em {new_file_path}")
+    except Exception as e:
+        print(f"Erro ao processar a planilha {file_path}: {e}")
 
 
-def main():
-    tabela = carregar_dados(arquivoEntrada)
-    if tabela is not None:
-        tabela = processar_dados(tabela)
-        tabelaAgrupado = agrupar_dados(tabela)
-        print(tabelaAgrupado)
-        salvar_dados(tabelaAgrupado, arquivoSaida)
+folder_path = './'
 
 
-if __name__ == "__main__":
-    main()
+for file_name in os.listdir(folder_path):
+    # Construir o caminho completo do arquivo
+    file_path = os.path.join(folder_path, file_name)
+
+
+    if file_path.endswith('.xlsx') or file_path.endswith('.xls'):
+        # Processar a planilha
+        processar_planilha(file_path)
